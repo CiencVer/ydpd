@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sopky, zemětřesení a tsunami ve světě</title>
+
+<!-- Leaflet = knihovna pro webové mapy. Soubor potřebuje při otevření internet. -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+
+<style>
+  :root {
+    --ink: #1c2330;
+    --ink-soft: #4a5463;
+    --line: #cfd5de;
+    --bg: #ffffff;
+    --accent: #1c2330;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    display: flex; flex-direction: column; height: 100dvh;
+    font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: var(--ink); background: var(--bg);
+  }
+
+  header { padding: 10px 14px 8px; border-bottom: 1px solid var(--line); }
+  h1 { margin: 0; font-size: 1.2rem; line-height: 1.25; font-weight: 700; }
+  .sub { margin: 2px 0 0; font-size: .85rem; color: var(--ink-soft); }
+
+  #map { flex: 1 1 auto; min-height: 0; background: #e9edf1; }
+
+  footer {
+    flex: 0 0 auto; max-height: 36dvh; overflow: auto;
+    padding: 8px 14px 10px; border-top: 1px solid var(--line);
+    font-size: .78rem; line-height: 1.45; color: var(--ink-soft);
+  }
+  footer p { margin: 0 0 4px; }
+  footer .caveat { color: var(--ink); font-weight: 600; }
+  footer details { margin-top: 2px; }
+  footer summary { cursor: pointer; color: var(--ink); font-weight: 600; padding: 3px 0; }
+  footer ul { margin: 4px 0 0; padding-left: 18px; }
+  footer li { margin-bottom: 3px; }
+
+  /* Legenda + přepínač vrstev */
+  .legend {
+    background: rgba(255,255,255,.96); border: 1px solid var(--line); border-radius: 6px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.18); padding: 8px 10px; min-width: 200px; max-width: 260px;
+    font-size: .85rem; color: var(--ink);
+  }
+  .legend h2 { margin: 0 0 6px; font-size: .88rem; font-weight: 700; }
+  .lg-row { display: flex; align-items: center; gap: 8px; padding: 5px 2px; cursor: pointer; min-height: 32px; }
+  .lg-row input { width: 18px; height: 18px; margin: 0; flex: 0 0 auto; cursor: pointer; }
+  .lg-row svg { flex: 0 0 auto; }
+  .lg-name { flex: 1 1 auto; }
+  .lg-count { color: var(--ink-soft); font-size: .78rem; white-space: nowrap; }
+  .lg-note { margin: 6px 0 0; padding-top: 6px; border-top: 1px solid var(--line); font-size: .74rem; color: var(--ink-soft); }
+  .lg-error { margin: 6px 0 0; padding: 6px; background: #fff4e5; border: 1px solid #e0a458; border-radius: 4px; font-size: .78rem; }
+  .lg-error button { margin-top: 4px; font: inherit; padding: 4px 8px; cursor: pointer; }
+
+  /* Vyskakovací okno */
+  .leaflet-popup-content { margin: 12px 14px; width: auto !important; min-width: 240px; }
+  .pp { font-size: .84rem; line-height: 1.4; color: var(--ink); }
+  .pp-h { display: flex; align-items: center; gap: 6px; font-weight: 700; font-size: .8rem; color: var(--ink-soft); }
+  .pp-title { font-size: 1rem; font-weight: 700; margin: 3px 0 0; }
+  .pp-date { color: var(--ink-soft); margin-bottom: 6px; }
+  .pp-facts { margin: 0 0 8px; display: grid; grid-template-columns: auto 1fr; gap: 1px 10px; }
+  .pp-facts dt { color: var(--ink-soft); }
+  .pp-facts dd { margin: 0; }
+  .pp-t { width: 100%; border-collapse: collapse; }
+  .pp-t th, .pp-t td { padding: 4px 6px; border-top: 1px solid var(--line); text-align: left; vertical-align: top; }
+  .pp-t th { font-weight: 600; }
+  .pp-t thead th { border-top: 0; color: var(--ink-soft); font-size: .76rem; }
+  .pp-t td b { display: block; font-size: .95rem; }
+  .pp-t td small { display: block; color: var(--ink-soft); font-size: .72rem; }
+  .na { color: var(--ink-soft); font-style: italic; }
+  .pp-foot { margin: 6px 0 0; font-size: .72rem; color: var(--ink-soft); }
+
+  @media (max-width: 640px) {
+    h1 { font-size: 1.02rem; }
+    .sub { font-size: .78rem; }
+    .legend { min-width: 170px; font-size: .8rem; }
+    footer { font-size: .74rem; max-height: 30dvh; }
+  }
+</style>
+</head>
+
+<body>
+<header>
+  <h1>Sopky, zemětřesení a tsunami: zaznamenané dopady na lidi</h1>
+  <p class="sub">Kliknutím na bod zobrazíte počty úmrtí, zraněných a pohřešovaných. Mapu lze posouvat a přibližovat.</p>
+</header>
+
+<div id="map" aria-label="Mapa světa s body sopek, zemětřesení a tsunami"></div>
+
+<footer>
+  <p class="caveat">Počet bodů v zemi neříká nic o míře jejího ohrožení a prázdné pole v tabulce neznamená nulu.</p>
+  <p>Zdroj dat: tři vrstvy ArcGIS Online (volcano2026, earthquakes2026, tsunamis2026), načítané přímo ze serveru services2.arcgis.com. Struktura polí odpovídá databázím NOAA NCEI o významných událostech; původ a úplnost dat si ověřte u autora vrstev. Podkladová mapa: Esri World Light Gray (Esri, HERE, Garmin, OpenStreetMap contributors).</p>
+  <details id="notes">
+    <summary>Co z mapy lze vyvodit a co ne</summary>
+    <ul>
+      <li><b>Lze:</b> zjistit, kde se v připojených vrstvách nacházejí zaznamenané události, a přečíst si u každé uvedené dopady na lidi.</li>
+      <li><b>Nelze:</b> porovnávat země podle počtu bodů. Historické události byly zaznamenávány nerovnoměrně a vrstvy nemusí obsahovat všechny události.</li>
+      <li><b>Nelze:</b> usuzovat, že místo bez bodu je bezpečné.</li>
+      <li><b>Pozor:</b> „neuvedeno“ znamená, že údaj ve vrstvě chybí. Není to totéž co nula.</li>
+      <li><b>Sloupec „Celkem“</b> zahrnuje podle struktury zdrojových databází i dopady souvisejících jevů (např. zemětřesení a jím vyvolané tsunami), proto se může lišit od sloupce „Přímé“.</li>
+      <li><b>Kategorie</b> (málo, několik, mnoho…) jsou převedeny z číselných kódů ve vrstvě podle klasifikace NOAA. Pokud vaše data používají jiný číselník, upravte ho v kódu (CATS).</li>
+      <li>Starší údaje bývají odhady. Záporný rok znamená dobu před naším letopočtem.</li>
+    </ul>
+  </details>
+</footer>
+
+<script>
+/* ============================================================
+   NASTAVENÍ VRSTEV – tady můžete měnit adresy, barvy a tvary.
+   ============================================================ */
+const LAYERS = [
+  {
+    key: 'volcano', label: 'Sopky (erupce)', title: 'Sopečná erupce',
+    url: 'https://services2.arcgis.com/LlQJoYHf9cwrM7NJ/arcgis/rest/services/volcano2026/FeatureServer',
+    shape: 'triangle',                 // tvar: 'triangle' | 'circle' | 'square'
+    color: '#D55E00', stroke: '#4a1f00', // barva výplně a obrysu (barvy přátelské k poruchám barvocitu)
+    radius: 8,                          // velikost bodu v pixelech
+    visible: true                       // zapnuto při startu mapy
+  },
+  {
+    key: 'tsunamis', label: 'Tsunami', title: 'Tsunami',
+    url: 'https://services2.arcgis.com/LlQJoYHf9cwrM7NJ/arcgis/rest/services/tsunamis2026/FeatureServer',
+    shape: 'square', color: '#0072B2', stroke: '#02304d', radius: 5, visible: true
+  },
+  {
+    key: 'earthquakes', label: 'Zemětřesení', title: 'Zemětřesení',
+    url: 'https://services2.arcgis.com/LlQJoYHf9cwrM7NJ/arcgis/rest/services/earthquakes2026/FeatureServer',
+    shape: 'circle', color: '#009E73', stroke: '#00402f', radius: 4, visible: true
+  }
+];
+
+/* Pořadí vykreslování zespodu nahoru. Co je poslední, je nejvíc vidět.
+   Nahoře jsou sopky (nejméně bodů, největší symbol), aby se neztratily pod zemětřeseními. */
+const DRAW_ORDER = ['earthquakes', 'tsunamis', 'volcano'];
+
+/* Kategorie škod podle klasifikace NOAA. Kódy 0–4 se v tabulce převedou na slova. */
+const CATS = {
+  0: 'žádné',
+  1: 'málo (cca 1–50)',
+  2: 'několik (cca 51–100)',
+  3: 'mnoho (cca 101–1000)',
+  4: 'velmi mnoho (nad 1000)'
+};
+
+/* Počáteční pohled: [šířka, délka], přiblížení */
+const START_VIEW = { center: [25, 10], zoom: window.innerWidth < 700 ? 1 : 2 };
+
+/* ============================================================
+   POMOCNÉ FUNKCE
+   ============================================================ */
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const isBlank = v => v === null || v === undefined || v === '';
+const isNum = v => !isBlank(v) && !isNaN(Number(v));
+const fmtNum = v => Number(v).toLocaleString('cs-CZ');
+const pad = n => String(n).padStart(2, '0');
+
+function shapeSvg(shape, fill, stroke, size) {
+  const s = size, c = s / 2, r = s / 2 - 1.5;
+  let el;
+  if (shape === 'triangle') el = `<polygon points="${c},1.5 ${s-1.5},${s-2} 1.5,${s-2}"`;
+  else if (shape === 'square') el = `<rect x="2" y="2" width="${s-4}" height="${s-4}"`;
+  else el = `<circle cx="${c}" cy="${c}" r="${r}"`;
+  return `<svg width="${s}" height="${s}" viewBox="0 0 ${s} ${s}" aria-hidden="true">${el} fill="${fill}" stroke="${stroke}" stroke-width="1.4"/></svg>`;
+}
+
+function fmtDate(p, withTime) {
+  if (isBlank(p.Year)) return 'datum neuvedeno';
+  const y = p.Year < 0 ? `${-p.Year} př. n. l.` : String(p.Year);
+  let d;
+  if (!isBlank(p.Dy) && !isBlank(p.Mo)) d = `${p.Dy}. ${p.Mo}. ${y}`;
+  else if (!isBlank(p.Mo)) d = `${p.Mo}/${y}`;
+  else d = y;
+  if (withTime && !isBlank(p.Hr) && !isBlank(p.Mn)) d += `, ${pad(p.Hr)}:${pad(p.Mn)} UTC`;
+  return d;
+}
+
+function catText(code) {
+  if (isBlank(code)) return null;
+  const n = Number(code);
+  return (isNum(code) && CATS[n] !== undefined) ? 'kategorie: ' + CATS[n] : esc(code);
+}
+
+function cell(value, cat) {
+  const n = isBlank(value) ? null : (isNum(value) ? fmtNum(value) : esc(value));
+  const c = catText(cat);
+  if (n === null && c === null) return '<span class="na">neuvedeno</span>';
+  return (n !== null ? `<b>${n}</b>` : '') + (c ? `<small>${c}</small>` : '');
+}
+
+/* ============================================================
+   OBSAH VYSKAKOVACÍHO OKNA – tady se mění, jaké atributy se ukážou
+   ============================================================ */
+function factsFor(def, p) {
+  const f = [];
+  const add = (label, v, unit) => { if (!isBlank(v)) f.push([label, esc(isNum(v) ? fmtNum(v) : v) + (unit ? ' ' + unit : '')]); };
+  if (def.key === 'volcano') {
+    add('Země', p.Country); add('Lokalita', p.Location); add('Typ sopky', p.Type);
+    add('Nadm. výška', p.Elevation__m_, 'm'); add('VEI', p.VEI);
+  } else if (def.key === 'earthquakes') {
+    add('Magnitudo', p.Mag); add('Hloubka ohniska', p.Focal_Depth__km_, 'km'); add('Intenzita (MMI)', p.MMI_Int);
+  } else {
+    add('Země', p.Country); add('Max. výška vody', p.Maximum_Water_Height__m_, 'm');
+    add('Magnitudo zemětřesení', p.Earthquake_Magnitude); add('Počet pozorování vlny', p.Number_of_Runups);
+  }
+  return f.length ? '<dl class="pp-facts">' + f.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('') + '</dl>' : '';
+}
+
+function popupHtml(def, p) {
+  const title = def.key === 'volcano' ? (p.Name || 'Bez názvu') : (p.Location_Name || 'Bez názvu');
+  const rows = [
+    ['Úmrtí',      p.Deaths,   p.Death_Description,   p.Total_Deaths,   p.Total_Death_Description],
+    ['Zranění',    p.Injuries, p.Injuries_Description, p.Total_Injuries, p.Total_Injuries_Description],
+    ['Pohřešovaní', p.Missing,  p.Missing_Description,  p.Total_Missing,  p.Total_Missing_Description]
+  ];
+  const table = rows.map(r => `<tr><th scope="row">${r[0]}</th><td>${cell(r[1], r[2])}</td><td>${cell(r[3], r[4])}</td></tr>`).join('');
+  return `<div class="pp">
+    <div class="pp-h">${shapeSvg(def.shape, def.color, def.stroke, 14)}<span>${def.title}</span></div>
+    <div class="pp-title">${esc(title)}</div>
+    <div class="pp-date">${esc(fmtDate(p, def.key !== 'volcano'))}</div>
+    ${factsFor(def, p)}
+    <table class="pp-t">
+      <thead><tr><th></th><th>Přímé</th><th>Celkem*</th></tr></thead>
+      <tbody>${table}</tbody>
+    </table>
+    <p class="pp-foot">*Včetně souvisejících jevů. „neuvedeno“ = údaj ve vrstvě chybí (není to nula).</p>
+  </div>`;
+}
+
+/* ============================================================
+   VLASTNÍ SYMBOLY (trojúhelník, čtverec, kruh) – kreslené na plátno,
+   aby mapa zvládla tisíce bodů bez zpomalování.
+   ============================================================ */
+L.Canvas.include({
+  _updateShape: function (layer) {
+    if (layer._empty()) return;
+    const p = layer._point, ctx = this._ctx, r = Math.max(Math.round(layer._radius), 2);
+    ctx.beginPath();
+    if (layer.options.shape === 'triangle') {
+      ctx.moveTo(p.x, p.y - r * 1.15);
+      ctx.lineTo(p.x + r * 1.05, p.y + r * 0.85);
+      ctx.lineTo(p.x - r * 1.05, p.y + r * 0.85);
+      ctx.closePath();
+    } else if (layer.options.shape === 'square') {
+      ctx.rect(p.x - r * 0.9, p.y - r * 0.9, r * 1.8, r * 1.8);
+    } else {
+      ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+    }
+    this._fillStroke(ctx, layer);
+  }
+});
+const ShapeMarker = L.CircleMarker.extend({
+  _updatePath: function () { this._renderer._updateShape(this); }
+});
+
+/* ============================================================
+   MAPA
+   ============================================================ */
+const map = L.map('map', { minZoom: 1, worldCopyJump: true, zoomControl: true })
+  .setView(START_VIEW.center, START_VIEW.zoom);
+
+/* Podkladová mapa: Esri World Light Gray (volně dostupná, bez registrace a klíče, s uvedením zdroje).
+   Světle šedá je záměrně: barevné body na ní nejvíc vynikají.
+   Druhá dlaždicová vrstva přidává hranice států a názvy. */
+const ESRI_ATTR = 'Podkladová mapa: Esri, HERE, Garmin, OpenStreetMap contributors';
+L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+  maxZoom: 16, maxNativeZoom: 16, attribution: ESRI_ATTR
+}).addTo(map);
+L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}', {
+  maxZoom: 16, maxNativeZoom: 16
+}).addTo(map);
+
+const renderer = L.canvas({ padding: 0.5, tolerance: 6 }); // tolerance = jak daleko od bodu ještě „trefíte“ klikem
+
+const state = {};   // stav každé vrstvy: skupina bodů, počet, zapnuto/vypnuto, stav načtení
+LAYERS.forEach(def => { state[def.key] = { def, group: L.layerGroup(), count: 0, visible: def.visible, status: 'loading' }; });
+
+function refreshOrder() {
+  DRAW_ORDER.forEach(k => map.removeLayer(state[k].group));
+  DRAW_ORDER.forEach(k => { if (state[k].visible) map.addLayer(state[k].group); });
+}
+
+/* ============================================================
+   NAČÍTÁNÍ DAT ze serveru ArcGIS (po stovkách záznamů)
+   ============================================================ */
+async function fetchAll(baseUrl) {
+  const pageSize = 1000, out = [];
+  for (let page = 0; page < 40; page++) {
+    const url = baseUrl + '/0/query?where=1%3D1&outFields=*&outSR=4326&orderByFields=ObjectId' +
+                `&resultOffset=${out.length}&resultRecordCount=${pageSize}&f=geojson`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const json = await res.json();
+    if (json.error) throw new Error(json.error.message || 'Chyba serveru');
+    const feats = json.features || [];
+    if (!feats.length) break;
+    out.push(...feats);
+    const more = json.exceededTransferLimit || (json.properties && json.properties.exceededTransferLimit);
+    if (feats.length < pageSize && !more) break;
+  }
+  return out;
+}
+
+async function loadLayer(def) {
+  const st = state[def.key];
+  st.status = 'loading'; st.group.clearLayers(); st.count = 0; updateLegend();
+  try {
+    const feats = await fetchAll(def.url);
+    feats.forEach(ft => {
+      const p = ft.properties || {};
+      let lat, lng;
+      if (ft.geometry && ft.geometry.coordinates) { lng = ft.geometry.coordinates[0]; lat = ft.geometry.coordinates[1]; }
+      else { lat = p.Latitude; lng = p.Longitude; }
+      if (!isNum(lat) || !isNum(lng)) return; // bez souřadnic se bod nedá zobrazit
+      const m = new ShapeMarker([Number(lat), Number(lng)], {
+        renderer, shape: def.shape, radius: def.radius,
+        color: def.stroke, weight: 1.3, fillColor: def.color, fillOpacity: def.key === 'earthquakes' ? 0.6 : 0.85
+      });
+      m.bindPopup(() => popupHtml(def, p), { maxWidth: 330, autoPanPadding: [20, 20] });
+      const name = def.key === 'volcano' ? p.Name : p.Location_Name;
+      m.bindTooltip(`${esc(name || def.title)} (${esc(isBlank(p.Year) ? '?' : p.Year)})`, { sticky: true, direction: 'top' });
+      st.group.addLayer(m);
+      st.count++;
+    });
+    st.status = 'ok';
+  } catch (e) {
+    console.error(def.key, e);
+    st.status = 'error';
+  }
+  updateLegend();
+  refreshOrder();
+}
+
+/* ============================================================
+   LEGENDA + PŘEPÍNAČ VRSTEV
+   ============================================================ */
+const legendEl = L.DomUtil.create('div', 'legend');
+L.DomEvent.disableClickPropagation(legendEl);
+L.DomEvent.disableScrollPropagation(legendEl);
+
+function updateLegend() {
+  const anyError = LAYERS.some(d => state[d.key].status === 'error');
+  legendEl.innerHTML = '<h2>Legenda a vrstvy</h2>' + LAYERS.map(def => {
+    const st = state[def.key];
+    const cnt = st.status === 'loading' ? 'načítám…' : st.status === 'error' ? 'nelze načíst' : fmtNum(st.count) + ' bodů';
+    return `<label class="lg-row">
+      <input type="checkbox" data-key="${def.key}" ${st.visible ? 'checked' : ''}>
+      ${shapeSvg(def.shape, def.color, def.stroke, 18)}
+      <span class="lg-name">${def.label}</span><span class="lg-count">${cnt}</span></label>`;
+  }).join('') +
+  (anyError ? `<div class="lg-error">Část dat se nepodařilo načíst. Zkontrolujte připojení k internetu.<br><button type="button" id="retry">Zkusit znovu</button></div>` : '') +
+  '<p class="lg-note">Tvar symbolu odlišuje vrstvy i bez barev.</p>';
+
+  legendEl.querySelectorAll('input[data-key]').forEach(cb => {
+    cb.addEventListener('change', () => { state[cb.dataset.key].visible = cb.checked; refreshOrder(); });
+  });
+  const retry = legendEl.querySelector('#retry');
+  if (retry) retry.addEventListener('click', () => LAYERS.forEach(d => { if (state[d.key].status === 'error') loadLayer(d); }));
+}
+
+const LegendControl = L.Control.extend({ options: { position: 'topright' }, onAdd: () => legendEl });
+map.addControl(new LegendControl());
+updateLegend();
+
+/* Poznámka v patičce: na telefonu je sbalená, na velké obrazovce rozbalená */
+document.getElementById('notes').open = window.innerWidth >= 900;
+
+/* Spuštění načítání všech tří vrstev najednou */
+LAYERS.forEach(loadLayer);
+</script>
+</body>
+</html>
